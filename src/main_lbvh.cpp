@@ -299,15 +299,6 @@ struct Node {
     bool hasRightChild() const { return child_right >= 0; }
     bool isLeaf() const { return !hasLeftChild() && !hasRightChild(); }
 
-    bool operator==(const Node &other) const {
-        return std::tie(child_left, child_right, bbox, mass, cmsx, cmsy)
-               == std::tie(other.child_left, other.child_right, other.bbox, other.mass, other.cmsx, other.cmsy);
-    }
-
-    bool operator!=(const Node &other) const {
-        return !(*this == other);
-    }
-
     int child_left, child_right;
     BBox bbox;
 
@@ -1533,12 +1524,22 @@ void nbody(bool interactive, bool evaluate_precision, int nbody_impl_index)
     }
 }
 
+bool floatEq(float a, float b, float relative_eps = 1e-3f) {
+    constexpr float MIN_DELTA = 1e-8f;
+    return std::abs(a - b) < std::max(std::max(std::abs(a), std::abs(b)), MIN_DELTA) * relative_eps;
+}
+
+bool operator==(const Node &lhs, const Node &rhs) {
+    return lhs.child_left == rhs.child_left && lhs.child_right == rhs.child_right && lhs.bbox == rhs.bbox &&
+           floatEq(lhs.mass, rhs.mass) && floatEq(lhs.cmsx, rhs.cmsx) && floatEq(lhs.cmsy, rhs.cmsy);
+}
+
 void checkTreesEqual(const std::vector<Node> &nodes_recursive, const std::vector<Node> &nodes, const Node &root_recursive, const Node &root)
 {
     EXPECT_EQ(root_recursive.bbox, root.bbox);
-    EXPECT_EQ(root_recursive.mass, root.mass);
-    EXPECT_EQ(root_recursive.cmsx, root.cmsx);
-    EXPECT_EQ(root_recursive.cmsy, root.cmsy);
+    EXPECT_TRUE(floatEq(root_recursive.mass, root.mass));
+    EXPECT_TRUE(floatEq(root_recursive.cmsx, root.cmsx));
+    EXPECT_TRUE(floatEq(root_recursive.cmsy, root.cmsy));
     EXPECT_EQ(root_recursive.hasLeftChild(), root.hasLeftChild());
     EXPECT_EQ(root_recursive.hasRightChild(), root.hasRightChild());
 
@@ -1810,6 +1811,15 @@ TEST (LBVH, GPU)
         std::vector<int> flags;
         buildBBoxes(nodes_cpu, flags, N);
 
+        {
+            // exclude last element of array which is a counter
+            std::vector<int> tmp(N - 1);
+            flags_gpu.readN(tmp.data(), N - 1);
+            for (int i = 0; i < N - 1; ++i) {
+                EXPECT_EQ(flags[i], tmp[i]);
+            }
+        }
+
         for (int i = 0; i < tree_size; ++i) {
             EXPECT_EQ(nodes[i], nodes_cpu[i]);
         }
@@ -1896,12 +1906,12 @@ TEST (LBVH, GPU)
             if (std::abs(dvy[i] - dvy_cpu[i]) < rel_eps_super_good * std::abs(dvy_cpu[i])) n_super_good_dvy++;
 
             double rel_eps = 0.5;
-            EXPECT_NEAR(pxs[i], pxs_cpu[i], rel_eps * std::abs(pxs_cpu[i]));
-            EXPECT_NEAR(pys[i], pys_cpu[i], rel_eps * std::abs(pys_cpu[i]));
-            EXPECT_NEAR(vxs[i], vxs_cpu[i], rel_eps * std::abs(vxs_cpu[i]));
-            EXPECT_NEAR(vys[i], vys_cpu[i], rel_eps * std::abs(vys_cpu[i]));
-            EXPECT_NEAR(dvx[i], dvx_cpu[i], rel_eps * std::abs(dvx_cpu[i]));
-            EXPECT_NEAR(dvy[i], dvy_cpu[i], rel_eps * std::abs(dvy_cpu[i]));
+            EXPECT_TRUE(floatEq(pxs[i], pxs_cpu[i], rel_eps));
+            EXPECT_TRUE(floatEq(pys[i], pys_cpu[i], rel_eps));
+            EXPECT_TRUE(floatEq(vxs[i], vxs_cpu[i], rel_eps));
+            EXPECT_TRUE(floatEq(vys[i], vys_cpu[i], rel_eps));
+            EXPECT_TRUE(floatEq(dvx[i], dvx_cpu[i], rel_eps));
+            EXPECT_TRUE(floatEq(dvy[i], dvy_cpu[i], rel_eps));
         }
 
         EXPECT_GE(n_super_good_pxs, 0.99 * N);
