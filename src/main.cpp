@@ -39,6 +39,19 @@ int main() {
 
     // TODO 1 По аналогии с предыдущим заданием узнайте, какие есть устройства, и выберите из них какое-нибудь
     // (если в списке устройств есть хоть одна видеокарта - выберите ее, если нету - выбирайте процессор)
+    cl_uint platformsCount = 0;
+    clGetPlatformIDs(0, nullptr, &platformsCount);
+    std::vector<cl_platform_id> platforms(platformsCount);
+    clGetPlatformIDs(platformsCount, platforms.data(), nullptr);
+    cl_device_id device;
+    for (int platformIndex = 0; platformIndex < platformsCount; ++platformsCount) {
+        cl_platform_id platform = platforms[platformIndex];
+        cl_uint devicesCount = 0;
+        clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 0, nullptr, &devicesCount);
+        if (devicesCount != 0) {
+            clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, sizeof(cl_device_id), &device, nullptr);
+        }
+    }
 
     // TODO 2 Создайте контекст с выбранным устройством
     // См. документацию https://www.khronos.org/registry/OpenCL/sdk/1.2/docs/man/xhtml/ -> OpenCL Runtime -> Contexts -> clCreateContext
