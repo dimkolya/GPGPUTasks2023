@@ -19,7 +19,7 @@ void raiseFail(const T &a, const T &b, std::string message, std::string filename
 #define EXPECT_THE_SAME(a, b, message) raiseFail(a, b, message, __FILE__, __LINE__)
 
 int main(int argc, char **argv) {
-    int benchmarkingIters = 10;
+    int benchmarkingIters = 25;
 
     unsigned int reference_sum = 0;
     unsigned int n = 100 * 1000 * 1000;
@@ -66,17 +66,16 @@ int main(int argc, char **argv) {
     context.init(device.device_id_opencl);
     context.activate();
 
+    gpu::gpu_mem_32u as_gpu;
+    gpu::gpu_mem_32u result_gpu;
+    as_gpu.resizeN(n);
+    as_gpu.writeN(as.data(), n);
+    result_gpu.resizeN(1);
+
+    unsigned int workGroupSize = 128;
     {
         ocl::Kernel kernel(sum_kernel, sum_kernel_length, "sum_global_atomic");
-
-        gpu::gpu_mem_32u as_gpu;
-        gpu::gpu_mem_32u result_gpu;
-        as_gpu.resizeN(n);
-        as_gpu.writeN(as.data(), n);
-        result_gpu.resizeN(1);
-
         kernel.compile();
-        unsigned int workGroupSize = 128;
         unsigned int global_work_size = (n + workGroupSize - 1) / workGroupSize * workGroupSize;
         timer t;
         for (int i = 0; i < benchmarkingIters; ++i) {
@@ -90,22 +89,14 @@ int main(int argc, char **argv) {
             EXPECT_THE_SAME(reference_sum, sum, "GPU global atomic sum should be consistent!");
             t.nextLap();
         }
-        size_t gflops = 1000 * 1000 * 1000;
-        std::cout << "GPU global atomic: " << t.lapAvg() << "+-" << t.lapStd() << " s" << std::endl;
-        std::cout << "GPU global atomic: " << n / t.lapAvg() / gflops << " GFlops" << std::endl;
+        std::cout << "GPU global atomic:     " << t.lapAvg() << "+-" << t.lapStd() << " s" << std::endl;
+        std::cout << "GPU global atomic:     " << (n / 1000.0 / 1000.0) / t.lapAvg() << " millions/s" << std::endl;
     }
 
     {
         ocl::Kernel kernel(sum_kernel, sum_kernel_length, "sum_loop");
-
-        gpu::gpu_mem_32u as_gpu;
-        gpu::gpu_mem_32u result_gpu;
-        as_gpu.resizeN(n);
-        as_gpu.writeN(as.data(), n);
-        result_gpu.resizeN(1);
-
         kernel.compile();
-        unsigned int workGroupSize = 128;
+
         unsigned int global_work_size = ((n + VALUES_PER_WORK_ITEM - 1) / VALUES_PER_WORK_ITEM
                 + workGroupSize - 1) / workGroupSize * workGroupSize;
         timer t;
@@ -120,22 +111,14 @@ int main(int argc, char **argv) {
             EXPECT_THE_SAME(reference_sum, sum, "GPU loop sum should be consistent!");
             t.nextLap();
         }
-        size_t gflops = 1000 * 1000 * 1000;
-        std::cout << "GPU loop: " << t.lapAvg() << "+-" << t.lapStd() << " s" << std::endl;
-        std::cout << "GPU loop: " << n / t.lapAvg() / gflops << " GFlops" << std::endl;
+        std::cout << "GPU loop:              " << t.lapAvg() << "+-" << t.lapStd() << " s" << std::endl;
+        std::cout << "GPU loop:              " << (n / 1000.0 / 1000.0) / t.lapAvg() << " millions/s" << std::endl;
     }
 
     {
         ocl::Kernel kernel(sum_kernel, sum_kernel_length, "sum_loop_coalesced");
-
-        gpu::gpu_mem_32u as_gpu;
-        gpu::gpu_mem_32u result_gpu;
-        as_gpu.resizeN(n);
-        as_gpu.writeN(as.data(), n);
-        result_gpu.resizeN(1);
-
         kernel.compile();
-        unsigned int workGroupSize = 128;
+
         unsigned int global_work_size = ((n + VALUES_PER_WORK_ITEM - 1) / VALUES_PER_WORK_ITEM
                                          + workGroupSize - 1) / workGroupSize * workGroupSize;
         timer t;
@@ -150,22 +133,14 @@ int main(int argc, char **argv) {
             EXPECT_THE_SAME(reference_sum, sum, "GPU coalesced loop sum should be consistent!");
             t.nextLap();
         }
-        size_t gflops = 1000 * 1000 * 1000;
-        std::cout << "GPU coalesced loop: " << t.lapAvg() << "+-" << t.lapStd() << " s" << std::endl;
-        std::cout << "GPU coalesced loop: " << n / t.lapAvg() / gflops << " GFlops" << std::endl;
+        std::cout << "GPU coalesced loop:    " << t.lapAvg() << "+-" << t.lapStd() << " s" << std::endl;
+        std::cout << "GPU coalesced loop:    " << (n / 1000.0 / 1000.0) / t.lapAvg() << " millions/s" << std::endl;
     }
 
     {
         ocl::Kernel kernel(sum_kernel, sum_kernel_length, "sum_local_memory");
-
-        gpu::gpu_mem_32u as_gpu;
-        gpu::gpu_mem_32u result_gpu;
-        as_gpu.resizeN(n);
-        as_gpu.writeN(as.data(), n);
-        result_gpu.resizeN(1);
-
         kernel.compile();
-        unsigned int workGroupSize = 128;
+
         unsigned int global_work_size = (n + workGroupSize - 1) / workGroupSize * workGroupSize;
         timer t;
         for (int i = 0; i < benchmarkingIters; ++i) {
@@ -179,8 +154,28 @@ int main(int argc, char **argv) {
             EXPECT_THE_SAME(reference_sum, sum, "GPU with local memory sum should be consistent!");
             t.nextLap();
         }
-        size_t gflops = 1000 * 1000 * 1000;
         std::cout << "GPU with local memory: " << t.lapAvg() << "+-" << t.lapStd() << " s" << std::endl;
-        std::cout << "GPU with local memory: " << n / t.lapAvg() / gflops << " GFlops" << std::endl;
+        std::cout << "GPU with local memory: " << (n / 1000.0 / 1000.0) / t.lapAvg() << " millions/s" << std::endl;
+    }
+
+    {
+        ocl::Kernel kernel(sum_kernel, sum_kernel_length, "sum_tree");
+        kernel.compile();
+
+        unsigned int global_work_size = (n + workGroupSize - 1) / workGroupSize * workGroupSize;
+        timer t;
+        for (int i = 0; i < benchmarkingIters; ++i) {
+            unsigned int sum = 0;
+            result_gpu.writeN(&sum, 1);
+            kernel.exec(gpu::WorkSize(workGroupSize, global_work_size),
+                        as_gpu,
+                        result_gpu,
+                        n);
+            result_gpu.readN(&sum, 1);
+            EXPECT_THE_SAME(reference_sum, sum, "GPU with tree sum should be consistent!");
+            t.nextLap();
+        }
+        std::cout << "GPU tree sum:          " << t.lapAvg() << "+-" << t.lapStd() << " s" << std::endl;
+        std::cout << "GPU tree sum:          " << (n / 1000.0 / 1000.0) / t.lapAvg() << " millions/s" << std::endl;
     }
 }
